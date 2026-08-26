@@ -1,0 +1,10 @@
+grid_h=5
+grid_w=5
+player_x=0
+player_y=0
+enemy1_x=4
+enemy1_y=4
+enemy2_x=5
+enemy2_y=5
+enemy1_speed=1 
+enemy2_speed=0 
