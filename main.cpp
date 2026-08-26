@@ -3,8 +3,11 @@
 #include <vector>
 #include <fstream>
 #include <string>
+#include <ctime> //for enemy movement
+#include <cstdlib> //for rand()
 
 //https://en.cppreference.com/w/cpp/language/operator_arithmetic
+//https://www.geeksforgeeks.org/cpp/cpp-multidimensional-array/
 
 struct Position {
     int x;
@@ -132,6 +135,34 @@ void MovePlayer(GameState& state, int dx, int dy) {
     state.player.y = Wrap(state.player.y + dy, state.height);
 }
 
+//Bonus Feature: Enemy movement
+void MoveEnemyRandomly(Enemy& enemy, const GameState& state) {
+    if (!enemy.alive) return;
+
+    int dx = 0, dy = 0;
+    do {
+        dx = rand() % 3 - 1; //randomly choose a x direction (-1, 0, 1)
+        dy = rand() % 3 - 1;
+    } while (dx == 0 && dy == 0); //ensuring the enemy moves one tile at a time
+
+    int newX = Wrap(enemy.pos.x + dx, state.width);
+    int newY = Wrap(enemy.pos.y + dy, state.height);
+
+    //check if tile is occupied by another enemy
+    bool isOccupied = false;
+    for(const auto& e : state.enemies) {
+        if (e.alive && e.pos.x == newX && e.pos.y == newY) {
+            isOccupied = true;
+            break;
+        }
+    }
+
+    if (!isOccupied) {
+        enemy.pos.x = newX;
+        enemy.pos.y = newY;
+    }
+}
+
 // checks every living enemy against the player's position
 bool AttackEnemies(GameState& state) {
     bool hitSomething = false;
@@ -159,6 +190,7 @@ bool AllEnemiesDefeated(const GameState& state) {
 
 
 int main() {
+    srand(time(NULL));
     GameState state;
 
     if (!LoadSettings("settings.txt", state)) {
@@ -167,6 +199,8 @@ int main() {
 
     std::cout << "Find the enemies (E) and attack them!\n";
     std::cout << "Commands: north/n, south/s, east/e, west/w, attack/a, exit\n\n";
+
+    int playerMoveCount = 0; //to keep track that every odd move, the moving enemy dont move, and every even move, the moving enemy starts to move
 
     while (true) {
         DisplayGrid(state);
@@ -179,14 +213,20 @@ int main() {
             break;
         }
 
+        bool playerMoved = false; // to indicate that if the player moved or not so that the enemy can react accordingly (the enemy only moves if the player moves)
+
         if (input == "north" || input == "n") {
             MovePlayer(state, 0, -1);
+            playerMoved = true;
         } else if (input == "south" || input == "s") {
             MovePlayer(state, 0, 1);
+            playerMoved = true;
         } else if (input == "east" || input == "e") {
             MovePlayer(state, 1, 0);
+            playerMoved = true;
         } else if (input == "west" || input == "w") {
             MovePlayer(state, -1, 0);
+            playerMoved = true;
         } else if (input == "attack" || input == "a") {
             if (AttackEnemies(state)) {
                 std::cout << "\nYou attacked an enemy!\n";
@@ -203,6 +243,19 @@ int main() {
             break;
         }
 
+        if (playerMoved) {
+            playerMoveCount++; //counts the movements/inputs as every even inputs (except turn 0) that the enemy will move
+            if (playerMoveCount % 2 == 0) {
+                MoveEnemyRandomly(state.enemies[0], state);
+            }
+        }
+        
+        //Game Over Check
+        if (AllEnemiesDefeated(state)) {
+            DisplayGrid(state);
+            std::cout << "\nYOU WIN - GAME OVER\n";
+            break;
+        }
         std::cout << "\n";
     }
 
