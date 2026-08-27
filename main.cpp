@@ -265,6 +265,7 @@ int main() {
         } else if (input == "attack" || input == "a") {
             if (AttackEnemies(state)) {
                 std::cout << "\nYou attacked an enemy!\n";
+                //Game Over Check
                 if (AllEnemiesDefeated(state)) {
                     DisplayGrid(state);
                     std::cout << "\nAll enemies defeated. You win!\n";
@@ -283,13 +284,6 @@ int main() {
             if (playerMoveCount % 2 == 0) {
                 MoveEnemyRandomly(state.enemies[0], state);
             }
-        }
-        
-        //Game Over Check
-        if (AllEnemiesDefeated(state)) {
-            DisplayGrid(state);
-            std::cout << "\nYOU WIN - GAME OVER\n";
-            break;
         }
         std::cout << "\n";
     }
