@@ -141,7 +141,8 @@ void MovePlayer(GameState& state, int dx, int dy) {
 
 //Bonus Feature: Enemy movement
 void MoveEnemyRandomly(Enemy& enemy, const GameState& state) {
-    if (!enemy.alive) return;
+    if (!enemy.alive) 
+    return;
 
     int dx = 0, dy = 0;
     do {
@@ -154,7 +155,7 @@ void MoveEnemyRandomly(Enemy& enemy, const GameState& state) {
 
     //check if tile is occupied by another enemy
     bool isOccupied = false;
-    for(const auto& e : state.enemies) {
+    for(const Enemy& e : state.enemies) {
         if (e.alive && e.pos.x == newX && e.pos.y == newY) {
             isOccupied = true;
             break;
