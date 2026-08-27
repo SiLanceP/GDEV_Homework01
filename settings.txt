@@ -7,4 +7,5 @@ enemy1_y=3
 enemy2_x=4
 enemy2_y=5
 enemy1_speed=1 
-enemy2_speed=0 
+enemy2_speed=0
+dash=4

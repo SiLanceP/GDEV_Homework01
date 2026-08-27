@@ -23,6 +23,7 @@ struct Enemy {
 struct GameState {
     int width;
     int height;
+    int dashes;
     Position player;
     std::vector<Enemy> enemies;
 };
@@ -79,7 +80,10 @@ bool LoadSettings(const std::string& filename, GameState& state) {
             state.enemies[1].pos.y = val;
         } else if (key == "enemy2_speed") {
             state.enemies[1].speed = val;
+        } else if (key == "dash") {
+            state.dashes = val;
         }
+        
     }
 
     state.player.x = Wrap(state.player.x, state.width);
@@ -198,7 +202,7 @@ int main() {
     }
 
     std::cout << "Find the enemies (E) and attack them!\n";
-    std::cout << "Commands: north/n, south/s, east/e, west/w, attack/a, exit\n\n";
+    std::cout << "Commands: north/n, south/s, east/e, west/w, attack/a, dash <dir>, exit\n\n";
 
     int playerMoveCount = 0; //to keep track that every odd move, the moving enemy dont move, and every even move, the moving enemy starts to move
 
@@ -227,6 +231,36 @@ int main() {
         } else if (input == "west" || input == "w") {
             MovePlayer(state, -1, 0);
             playerMoved = true;
+        } else if (input.find("dash ") == 0){
+            std::string dir = input.substr(5);
+
+            if (state.dashes > 0) {
+                int dx = 0, dy = 0;
+
+                if (dir == "north" || dir == "n") {
+                    dy = -2;
+                }
+                else if (dir == "south" || dir == "s") {
+                    dy = 2;
+                }
+                else if (dir == "east" || dir == "e") {
+                    dx = 2;
+                }
+                else if (dir == "west" || dir == "w") {
+                    dx = -2;
+                }
+
+                if (dx != 0 || dy != 0) {
+                    MovePlayer(state, dx,dy);
+                    state.dashes--;
+                    playerMoved = true;
+                    std::cout << "You Dashed! Dashes Left: " << state.dashes << "\n";
+                } else {
+                    std::cout << "Invalid Dash Input" << "\n";
+                }
+            } else { 
+                std::cout << "You ran out of dashes Dashes Left: " << state.dashes << "\n";
+            }
         } else if (input == "attack" || input == "a") {
             if (AttackEnemies(state)) {
                 std::cout << "\nYou attacked an enemy!\n";
