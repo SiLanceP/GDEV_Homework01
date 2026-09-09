@@ -13,7 +13,7 @@ struct Particle {
     Vector2 direction;
     float speed;
     float lifeTime;
-    float maxTime;
+    float maxTime; // added for fade calc
     Color color;
 };
 
@@ -27,6 +27,7 @@ void EmitParticle(Particle* particles, int count, Vector2 position, Vector2 dire
             particles[i].direction = direction;
             particles[i].speed = speed;
             particles[i].lifeTime = lifeTime;
+            particles[i].maxTime = lifeTime;
             particles[i].color = color;
             return;
         }
@@ -77,6 +78,7 @@ int main() {
         particles[i].direction = { 0.0f, 0.0f };
         particles[i].speed = 0.0f;
         particles[i].lifeTime = 0.0f;
+        particles[i].maxTime = 0.0f;
         particles[i].color = WHITE;
     }
     
@@ -96,7 +98,7 @@ int main() {
                 Vector2 pos = {(800.0f / 2.0f), 600.0f};
                 Vector2 dir = {(float)GetRandomValue(-100.0f,100.0f) / 100.0f , -1.0f};
                 float speed = GetRandomValue(50.0f,100.0f);
-                float lifeTime = GetRandomValue(2.0f,5.0f);
+                float lifeTime = (float)GetRandomValue(200, 500) / 100.0f;
                 Color color = ColorFromHSV(GetRandomValue(0,360),1.0f,1.0f);
 
                 EmitParticle(particles,PARTICLE_COUNT, pos,dir,speed,lifeTime,color);
@@ -111,9 +113,10 @@ int main() {
             while (timerY >= intervalY) {
                 timerY -= intervalY;
                 Vector2 pos = GetMousePosition();
-                Vector2 dir = {(float)GetRandomValue(-1.0f,1.0f), (float)GetRandomValue(-1.0f,1.0f)};
+                float angle = (float)GetRandomValue(0, 359) * DEG2RAD;
+                Vector2 dir = { cosf(angle), sinf(angle) };
                 float speed = GetRandomValue(50.0f,100.0f);
-                float lifeTime = GetRandomValue(0.5f,2.0f);
+                float lifeTime = (float)GetRandomValue(50, 200) / 100.0f;
                 Color color = ColorFromHSV(GetRandomValue(0,360),1.0f,1.0f);
 
                 EmitParticle(particles,PARTICLE_COUNT, pos,dir,speed,lifeTime,color);
@@ -122,8 +125,37 @@ int main() {
             timerY = 0.0f;
         }
 
+        for (int i = 0; i < PARTICLE_COUNT; i++) {
+            if (!particles[i].isActive) continue;
+ 
+            Vector2 moveDir = Vector2Normalize(particles[i].direction);
+            particles[i].position = Vector2Add(
+                particles[i].position,
+                Vector2Scale(moveDir, particles[i].speed * deltaTime)
+            );
+ 
+            particles[i].lifeTime -= deltaTime;
+ 
+            if (particles[i].lifeTime <= 0.0f) {
+                particles[i].isActive = false;
+                continue;
+            }
+ 
+            float lifeRatio = particles[i].lifeTime / particles[i].maxTime;
+            if (lifeRatio < 0.0f) lifeRatio = 0.0f;
+            if (lifeRatio > 1.0f) lifeRatio = 1.0f;
+            particles[i].color.a = (unsigned char)(lifeRatio * 255.0f);
+        }
+
         BeginDrawing();
-        ClearBackground(BLACK);
+        ClearBackground(WHITE);
+
+        for (int i = 0; i < PARTICLE_COUNT; i++) {
+            if (particles[i].isActive) {
+                DrawCircleV(particles[i].position, 5.0f, particles[i].color);
+            }
+        }
+
         EndDrawing();
     }
 
