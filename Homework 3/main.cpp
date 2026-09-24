@@ -6,14 +6,14 @@ const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
 const float FPS = 60;
 const float VELOCITY_THRESHOLD = 5.0f;
-const float MAX_FORCE = 1000.0f;
+const float MAX_FORCE = 2000.0f;
 const float BORDER_THICKNESS = 20.0f;
 const float POCKET_RADIUS = 50.0f;
 const float TIMESTEP = 1.0f / FPS;
 const float FRICTION = 0.4f;
 const float elasticity = 0.9f;
 const float POCKET_INSET = 35.0f;
-const float MAX_DRAG_LENGTH = 150.0f;
+const float MAX_DRAG_LENGTH = 170.0f;
 
 const int num_walls = 4;
 const int num_pockets = 4;
@@ -118,10 +118,10 @@ void BalltoPocketCollision(Ball& ball, const pocket& p, Vector2 cue_start_positi
 //helper for reset
 void ResetTable(Ball balls[]){
     balls[0].position = { WINDOW_WIDTH / 4.0f, WINDOW_HEIGHT / 2.0f };
-    balls[1].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f - 80 };
-    balls[2].position = { WINDOW_WIDTH / 2.0f - 80, WINDOW_HEIGHT / 2.0f };
-    balls[3].position = { WINDOW_WIDTH / 2.0f + 80, WINDOW_HEIGHT / 2.0f };
-    balls[4].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f + 80 };
+    balls[1].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f - 45 };
+    balls[2].position = { WINDOW_WIDTH / 1.5f - 45, WINDOW_HEIGHT / 2.0f };
+    balls[3].position = { WINDOW_WIDTH / 1.5f + 45, WINDOW_HEIGHT / 2.0f };
+    balls[4].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f + 45 };
 
     for (int i = 0; i < 5; i++) {
         balls[i].velocity = Vector2Zero();
@@ -179,7 +179,7 @@ int main() {
 
     Vector2 cue_start_position = balls[0].position;
 
-    balls[1].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f - 80 };
+    balls[1].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f - 45 };
     balls[1].radius = 30.0f;
     balls[1].color = BLUE;
     balls[1].mass = 1.0f;
@@ -189,7 +189,7 @@ int main() {
     balls[1].forces = Vector2Zero();
     balls[1].active = true;
 
-    balls[2].position = { WINDOW_WIDTH / 2.0f - 80, WINDOW_HEIGHT / 2.0f };
+    balls[2].position = { WINDOW_WIDTH / 1.5f - 45, WINDOW_HEIGHT / 2.0f };
     balls[2].radius = 30.0f;
     balls[2].color = BLUE;
     balls[2].mass = 1.0f;
@@ -199,7 +199,7 @@ int main() {
     balls[2].forces = Vector2Zero();
     balls[2].active = true;
 
-    balls[3].position = { WINDOW_WIDTH / 2.0f + 80, WINDOW_HEIGHT / 2.0f };
+    balls[3].position = { WINDOW_WIDTH / 1.5f + 45, WINDOW_HEIGHT / 2.0f };
     balls[3].radius = 30.0f;
     balls[3].color = BLUE;
     balls[3].mass = 1.0f;
@@ -209,7 +209,7 @@ int main() {
     balls[3].forces = Vector2Zero();
     balls[3].active = true;
 
-    balls[4].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f + 80 };
+    balls[4].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f + 45 };
     balls[4].radius = 30.0f;
     balls[4].color = BLUE;
     balls[4].mass = 1.0f;
@@ -245,7 +245,7 @@ int main() {
             if (dragging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
                 Vector2 current = GetMousePosition();
                 Vector2 drag_vector = Vector2Subtract(drag_start, current);
-                float magnitude = Vector2Length(drag_vector);
+                float magnitude = Vector2Length(drag_vector) * 6.0f;
 
                 // caps the force
                 if (magnitude > MAX_FORCE) {
@@ -342,6 +342,12 @@ int main() {
             int textWidth = MeasureText(win, fontSize);
 
             DrawText(win, (WINDOW_WIDTH - textWidth) / 2, WINDOW_HEIGHT / 2 - 30, fontSize, BLACK);
+
+            const char* subtext = "Press R to play again";
+            int subFontSize = 24;
+            int subTextWidth = MeasureText(subtext, subFontSize);
+
+            DrawText(subtext, (WINDOW_WIDTH - subTextWidth) / 2, WINDOW_HEIGHT / 2 + 40, subFontSize, BLACK);
         }
 
         EndDrawing();
