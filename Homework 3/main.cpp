@@ -115,6 +115,44 @@ void BalltoPocketCollision(Ball& ball, const pocket& p, Vector2 cue_start_positi
     }
 }
 
+//helper for reset
+void ResetTable(Ball balls[]){
+    balls[0].position = { WINDOW_WIDTH / 4.0f, WINDOW_HEIGHT / 2.0f };
+    balls[1].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f - 80 };
+    balls[2].position = { WINDOW_WIDTH / 2.0f - 80, WINDOW_HEIGHT / 2.0f };
+    balls[3].position = { WINDOW_WIDTH / 2.0f + 80, WINDOW_HEIGHT / 2.0f };
+    balls[4].position = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f + 80 };
+
+    for (int i = 0; i < 5; i++) {
+        balls[i].velocity = Vector2Zero();
+        balls[i].acceleration = Vector2Zero();
+        balls[i].forces = Vector2Zero();
+        balls[i].active = true;
+    }
+}
+
+//helper to know if all the balls are stoppped
+
+bool AllBallStopped(const Ball balls[], int count) {
+    for (int i = 0; i < count; i++) {
+        if (balls[i].active && (balls[i].velocity.x != 0.0f || balls[i].velocity.y != 0.0f)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+//for game win
+bool GameWon(const Ball balls[], int count) {
+    for (int i = 1; i < count; i++){
+        if (balls[i].active) {
+            return false;
+        }
+    }
+    return true;
+}
+
 int main() {
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Homework 3 - Pool");
     SetTargetFPS(FPS);
@@ -193,26 +231,35 @@ int main() {
         float delta_time = GetFrameTime();
         accumulator += delta_time;
 
-        if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-            dragging = true;
-            drag_start = GetMousePosition();
+        if (IsKeyPressed(KEY_R)){
+            ResetTable(balls);
+            dragging = false;
         }
 
-        if (dragging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-            Vector2 current = GetMousePosition();
-            Vector2 drag_vector = Vector2Subtract(drag_start, current);
-            float magnitude = Vector2Length(drag_vector);
-
-            // caps the force
-            if (magnitude > MAX_FORCE) {
-                magnitude = MAX_FORCE;
+        if (AllBallStopped(balls, num_balls)) {
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                dragging = true;
+                drag_start = GetMousePosition();
             }
 
-            Vector2 direction = Vector2Normalize(drag_vector);
-            Vector2 force = Vector2Scale(direction, magnitude * balls[0].inverse_mass);
+            if (dragging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+                Vector2 current = GetMousePosition();
+                Vector2 drag_vector = Vector2Subtract(drag_start, current);
+                float magnitude = Vector2Length(drag_vector);
 
-            balls[0].velocity = Vector2Add(balls[0].velocity, force);
+                // caps the force
+                if (magnitude > MAX_FORCE) {
+                    magnitude = MAX_FORCE;
+                }
 
+                Vector2 direction = Vector2Normalize(drag_vector);
+                Vector2 force = Vector2Scale(direction, magnitude * balls[0].inverse_mass);
+
+                balls[0].velocity = Vector2Add(balls[0].velocity, force);
+
+                dragging = false;
+            }
+        } else {
             dragging = false;
         }
 
@@ -287,6 +334,14 @@ int main() {
 
             Vector2 line_end = Vector2Add(balls[0].position, drag_vector);
             DrawLineEx(balls[0].position, line_end, 4.0f, YELLOW);
+        }
+
+        if (GameWon(balls, num_balls)) {
+            const char* win = "YOU WIN";
+            int fontSize = 60;
+            int textWidth = MeasureText(win, fontSize);
+
+            DrawText(win, (WINDOW_WIDTH - textWidth) / 2, WINDOW_HEIGHT / 2 - 30, fontSize, BLACK);
         }
 
         EndDrawing();
