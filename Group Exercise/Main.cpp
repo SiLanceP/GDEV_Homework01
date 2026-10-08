@@ -12,7 +12,7 @@ const int GRID_HEIGHT = WINDOW_HEIGHT / CELL_SIZE;
 const float elasticity = 1.0f;
 const int SPAWNS_BEFORE_BIG = 10;
 
-//g++ UnifiedGrid.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
+//g++ Main.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 
 
 struct particle {
