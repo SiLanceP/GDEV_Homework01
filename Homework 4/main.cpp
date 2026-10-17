@@ -2,47 +2,42 @@
 #include <raymath.h>
 #include <vector>
 
-const int WINDOW_WIDTH = 800;
-const int WINDOW_HEIGHT = 600;
+const int WINDOW_WIDTH = 1280;
+const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
-const float VELOCITY_THRESHOLD = 5.0f;
-const float MAX_FORCE = 2000.0f;
-const float BORDER_THICKNESS = 20.0f;
-const float POCKET_RADIUS = 50.0f;
-const float TIMESTEP = 1.0f / FPS;
-const float FRICTION = 0.4f;
-const float elasticity = 0.9f;
-const float POCKET_INSET = 35.0f;
-const float MAX_DRAG_LENGTH = 170.0f;
+const float TIMESTEP = 1 / FPS; // Sets the timestep to 1 / FPS. But timestep can be any very small value.
+const int CELL_SIZE = 80;
+const int GRID_WIDTH = WINDOW_WIDTH / CELL_SIZE;
+const int GRID_HEIGHT = WINDOW_HEIGHT / CELL_SIZE;
+const float elasticity = 1.0f;
+const int SPAWNS_BEFORE_BIG = 10;
 
-const int num_walls = 4;
-const int num_pockets = 4;
-const int num_balls = 5;
+//g++ Main.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 
-struct Ball {
+
+struct particle {
+    int id;
     Vector2 position;
+    Vector2 velocity;
     float radius;
     Color color;
     float mass;
-    float inverse_mass;
-    Vector2 velocity;
-    Vector2 acceleration;
-    Vector2 forces;
-    bool active;
+    float inverse_mass; // A variable for 1 / mass. Used in the calculation for acceleration = sum of forces / mass
+
+    int min_x;
+    int min_y;
+    int max_x;
+    int max_y;
 };
 
-struct Wall {
-    Rectangle rect;
-};
-
-struct pocket {
+struct GridCell {
+    std::vector<particle*> particles;
     Vector2 position;
+    Vector2 size;
 };
 
 //helper code for the collision equation (ball-ball collision)
-void BalltoBallCollision(Ball& a, Ball& b) {
-    if (!a.active || !b.active) return;
-
+void BalltoBallCollision(particle& a, particle& b) {
     float distance = Vector2Distance(a.position, b.position);
     float radiisum = a.radius + b.radius;
 
@@ -69,289 +64,169 @@ void BalltoBallCollision(Ball& a, Ball& b) {
 }
 
 //helper function for Ball to Wall collision (AABB)
-void BalltoWallCollision(Ball& ball, const Wall& wall) {
-    if (!ball.active) return;
+void BalltoWallCollision(particle& ball) {
+    if((ball.position.x + ball.radius >= WINDOW_WIDTH && ball.velocity.x > 0) || (ball.position.x - ball.radius <= 0 && ball.velocity.x < 0)) {
+        ball.velocity.x *= -1;
+    }
+    if((ball.position.y + ball.radius >= WINDOW_HEIGHT && ball.velocity.y > 0) || (ball.position.y - ball.radius <= 0 && ball.velocity.y < 0)) {
+        ball.velocity.y *= -1;
+    }
 
-    float pointX = Clamp(ball.position.x, wall.rect.x, wall.rect.x + wall.rect.width);
-    float pointY = Clamp(ball.position.y, wall.rect.y, wall.rect.y + wall.rect.height);
+    // clamp to keep ball inside the screen
+    ball.position.x = Clamp(ball.position.x, ball.radius, WINDOW_WIDTH - ball.radius);
+    ball.position.y = Clamp(ball.position.y, ball.radius, WINDOW_HEIGHT - ball.radius);
+}
 
-    float distX = ball.position.x - pointX;
-    float distY = ball.position.y - pointY;
-    float distance = sqrtf(distX * distX + distY * distY);
+//helper to get the cell index of a coordinate
+int GetCellIndex(float value, int count) {
+    int index = (int)(value / CELL_SIZE);
+    if (index < 0) index = 0;
+    if (index > count - 1) index = count - 1;
+    return index;
+}
 
-    if (distance < ball.radius) {
-        Vector2 normal;
-        if (distance > 0.0f) {
-            normal = { distX / distance, distY / distance };
-        } else {
-            normal = { 0.0f, -1.0f };
+//helper to rebuild the particle list of every cell using each particle's AABB
+void UpdateGrid(GridCell grid[GRID_WIDTH][GRID_HEIGHT], std::vector<particle*>& particles) {
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        for (int y = 0; y < GRID_HEIGHT; y++) {
+            grid[x][y].particles.clear();
         }
-
-        float overlap = ball.radius - distance;
-        ball.position = Vector2Add(ball.position, Vector2Scale(normal, overlap));
-
-        float velocity_along_normal = Vector2DotProduct(ball.velocity, normal);
-        if (velocity_along_normal < 0) {
-            ball.velocity = Vector2Subtract(ball.velocity,
-                Vector2Scale(normal, (1.0f + elasticity) * velocity_along_normal));
+    }
+ 
+    for (particle* p : particles) {
+        p->min_x = GetCellIndex(p->position.x - p->radius, GRID_WIDTH);
+        p->max_x = GetCellIndex(p->position.x + p->radius, GRID_WIDTH);
+        p->min_y = GetCellIndex(p->position.y - p->radius, GRID_HEIGHT);
+        p->max_y = GetCellIndex(p->position.y + p->radius, GRID_HEIGHT);
+ 
+        for (int x = p->min_x; x <= p->max_x; x++) {
+            for (int y = p->min_y; y <= p->max_y; y++) {
+                grid[x][y].particles.push_back(p);
+            }
+        }
+    }
+}
+ 
+//helper to check collisions only between particles that share a cell
+void GridCollisions(GridCell grid[GRID_WIDTH][GRID_HEIGHT]) {
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        for (int y = 0; y < GRID_HEIGHT; y++) {
+            std::vector<particle*>& cell = grid[x][y].particles;
+ 
+            for (size_t i = 0; i < cell.size(); i++) {
+                for (size_t j = i + 1; j < cell.size(); j++) {
+                    particle* a = cell[i];
+                    particle* b = cell[j];
+ 
+                    int shared_x = (a->min_x > b->min_x) ? a->min_x : b->min_x;
+                    int shared_y = (a->min_y > b->min_y) ? a->min_y : b->min_y;
+                    if (shared_x != x || shared_y != y) continue;
+ 
+                    BalltoBallCollision(*a, *b);
+                }
+            }
         }
     }
 }
 
-//helper function for Ball to pocket collision
-void BalltoPocketCollision(Ball& ball, const pocket& p, Vector2 cue_start_position, bool is_cue_ball) {
-    if (!ball.active) return;
-
-    float distance = Vector2Distance(ball.position, p.position);
-
-    if (distance < POCKET_RADIUS) {
-        if (is_cue_ball) {
-            ball.position = cue_start_position;
-            ball.velocity = Vector2Zero();
-        } else {
-            ball.active = false;
-            ball.velocity = Vector2Zero();
+void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nextId) {
+    // Function to spawn particles
+    if (spawnCount == SPAWNS_BEFORE_BIG) {
+        spawnCount = 0;
+        particle* p = new particle();
+        p->id = nextId++;
+        p->radius = 25.0f;
+        p->mass = 10.0f;
+        p->inverse_mass = 1.0f / p->mass;
+        p->position = { (float)GetRandomValue(30, WINDOW_WIDTH - 30), (float)GetRandomValue(30, WINDOW_HEIGHT  - 30) };
+        p->velocity = { (float)GetRandomValue(-200, 200), (float)GetRandomValue(-200, 200) };
+        p->color = { (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), 255 };
+        particles.push_back(p);
+    } else {
+        spawnCount++;
+        for (int i = 0; i < 25; i++) {
+            particle* a = new particle();
+            a->id = nextId++;
+            a->radius = (float)GetRandomValue(5, 10);
+            a->mass = 1.0f;
+            a->inverse_mass = 1.0f / a->mass;
+            a->color = { (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), 255 };
+            a->position = {WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f};
+            a->velocity = { (float)GetRandomValue(-200, 200), (float)GetRandomValue(-200, 200) };
+            particles.push_back(a);
         }
     }
-}
-
-//helper for reset
-void ResetTable(Ball balls[]){
-    balls[0].position = { WINDOW_WIDTH / 4.0f, WINDOW_HEIGHT / 2.0f };
-    balls[1].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f - 45 };
-    balls[2].position = { WINDOW_WIDTH / 1.5f - 45, WINDOW_HEIGHT / 2.0f };
-    balls[3].position = { WINDOW_WIDTH / 1.5f + 45, WINDOW_HEIGHT / 2.0f };
-    balls[4].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f + 45 };
-
-    for (int i = 0; i < 5; i++) {
-        balls[i].velocity = Vector2Zero();
-        balls[i].acceleration = Vector2Zero();
-        balls[i].forces = Vector2Zero();
-        balls[i].active = true;
-    }
-}
-
-//helper to know if all the balls are stoppped
-
-bool AllBallStopped(const Ball balls[], int count) {
-    for (int i = 0; i < count; i++) {
-        if (balls[i].active && (balls[i].velocity.x != 0.0f || balls[i].velocity.y != 0.0f)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-
-//for game win
-bool GameWon(const Ball balls[], int count) {
-    for (int i = 1; i < count; i++){
-        if (balls[i].active) {
-            return false;
-        }
-    }
-    return true;
+ 
 }
 
 int main() {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Homework 3 - Pool");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Grid");
     SetTargetFPS(FPS);
     float accumulator = 0.0f;
+    std::vector<particle*> particles;
+    int spawnCount = 0;
+    int nextId = 0;
 
-    Wall walls[num_walls];
-    Ball balls[num_balls];
-    pocket pockets[num_pockets];
-
-    walls[0].rect = { 0, 0, (float)WINDOW_WIDTH, BORDER_THICKNESS };
-    walls[1].rect = { 0, WINDOW_HEIGHT - BORDER_THICKNESS, (float)WINDOW_WIDTH, BORDER_THICKNESS };
-    walls[2].rect = { 0, 0, BORDER_THICKNESS, (float)WINDOW_HEIGHT };
-    walls[3].rect = { WINDOW_WIDTH - BORDER_THICKNESS, 0, BORDER_THICKNESS, (float)WINDOW_HEIGHT };
-
-    balls[0].position = { WINDOW_WIDTH / 4.0f, WINDOW_HEIGHT / 2.0f };
-    balls[0].radius = 30.0f;
-    balls[0].color = WHITE;
-    balls[0].mass = 1.0f;
-    balls[0].inverse_mass = 1.0f / balls[0].mass;
-    balls[0].velocity = Vector2Zero();
-    balls[0].acceleration = Vector2Zero();
-    balls[0].forces = Vector2Zero();
-    balls[0].active = true;
-
-    Vector2 cue_start_position = balls[0].position;
-
-    balls[1].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f - 45 };
-    balls[1].radius = 30.0f;
-    balls[1].color = BLUE;
-    balls[1].mass = 1.0f;
-    balls[1].inverse_mass = 1.0f / balls[1].mass;
-    balls[1].velocity = Vector2Zero();
-    balls[1].acceleration = Vector2Zero();
-    balls[1].forces = Vector2Zero();
-    balls[1].active = true;
-
-    balls[2].position = { WINDOW_WIDTH / 1.5f - 45, WINDOW_HEIGHT / 2.0f };
-    balls[2].radius = 30.0f;
-    balls[2].color = BLUE;
-    balls[2].mass = 1.0f;
-    balls[2].inverse_mass = 1.0f / balls[2].mass;
-    balls[2].velocity = Vector2Zero();
-    balls[2].acceleration = Vector2Zero();
-    balls[2].forces = Vector2Zero();
-    balls[2].active = true;
-
-    balls[3].position = { WINDOW_WIDTH / 1.5f + 45, WINDOW_HEIGHT / 2.0f };
-    balls[3].radius = 30.0f;
-    balls[3].color = BLUE;
-    balls[3].mass = 1.0f;
-    balls[3].inverse_mass = 1.0f / balls[3].mass;
-    balls[3].velocity = Vector2Zero();
-    balls[3].acceleration = Vector2Zero();
-    balls[3].forces = Vector2Zero();
-    balls[3].active = true;
-
-    balls[4].position = { WINDOW_WIDTH / 1.5f, WINDOW_HEIGHT / 2.0f + 45 };
-    balls[4].radius = 30.0f;
-    balls[4].color = BLUE;
-    balls[4].mass = 1.0f;
-    balls[4].inverse_mass = 1.0f / balls[4].mass;
-    balls[4].velocity = Vector2Zero();
-    balls[4].acceleration = Vector2Zero();
-    balls[4].forces = Vector2Zero();
-    balls[4].active = true;
-
-    pockets[0].position = { POCKET_INSET, POCKET_INSET };
-    pockets[1].position = { WINDOW_WIDTH - POCKET_INSET, POCKET_INSET };
-    pockets[2].position = { POCKET_INSET, WINDOW_HEIGHT - POCKET_INSET };
-    pockets[3].position = { WINDOW_WIDTH - POCKET_INSET, WINDOW_HEIGHT - POCKET_INSET };
-
-    bool dragging = false;
-    Vector2 drag_start = Vector2Zero();
+    GridCell grid[GRID_WIDTH][GRID_HEIGHT];
+    for (int x = 0; x < GRID_WIDTH; x++) {
+        for (int y = 0; y < GRID_HEIGHT; y++) {
+            grid[x][y].position = { (float)(x * CELL_SIZE), (float)(y * CELL_SIZE) };
+            grid[x][y].size = { (float)CELL_SIZE, (float)CELL_SIZE };
+        }
+    }
 
     while (!WindowShouldClose()) {
         float delta_time = GetFrameTime();
         accumulator += delta_time;
 
-        if (IsKeyPressed(KEY_R)){
-            ResetTable(balls);
-            dragging = false;
+        if (IsKeyPressed(KEY_SPACE)) {
+            Spawnparticles(particles, spawnCount, nextId);
         }
-
-        if (AllBallStopped(balls, num_balls)) {
-            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
-                dragging = true;
-                drag_start = GetMousePosition();
-            }
-
-            if (dragging && IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-                Vector2 current = GetMousePosition();
-                Vector2 drag_vector = Vector2Subtract(drag_start, current);
-                float magnitude = Vector2Length(drag_vector) * 6.0f;
-
-                // caps the force
-                if (magnitude > MAX_FORCE) {
-                    magnitude = MAX_FORCE;
-                }
-
-                Vector2 direction = Vector2Normalize(drag_vector);
-                Vector2 force = Vector2Scale(direction, magnitude * balls[0].inverse_mass);
-
-                balls[0].velocity = Vector2Add(balls[0].velocity, force);
-
-                dragging = false;
-            }
-        } else {
-            dragging = false;
-        }
-
+        
         while (accumulator >= TIMESTEP) {
-            for (int i = 0; i < num_balls; i++) {
-                if (!balls[i].active) continue;
-
-                // friction so ball slows down
-                balls[i].velocity = Vector2Subtract(balls[i].velocity,
-                    Vector2Scale(balls[i].velocity, FRICTION * TIMESTEP));
-
-                // stop after moving slow for awhile
-                if (Vector2Length(balls[i].velocity) < VELOCITY_THRESHOLD) {
-                    balls[i].velocity = Vector2Zero();
-                }
-
-                balls[i].position = Vector2Add(balls[i].position,
-                    Vector2Scale(balls[i].velocity, TIMESTEP));
+            // update particle position based on velocity
+            for (particle* p : particles) {
+                p->position = Vector2Add(p->position, Vector2Scale(p->velocity, TIMESTEP));
             }
-
-            for (int i = 0; i < num_balls; i++) {
-                for (int j = i + 1; j < num_balls; j++) {
-                    BalltoBallCollision(balls[i], balls[j]);
-                }
+ 
+            UpdateGrid(grid, particles);
+            GridCollisions(grid);
+ 
+            // check for wall collisions
+            for (particle* p : particles) {
+                BalltoWallCollision(*p);
             }
-
-            for (int i = 0; i < num_balls; i++) {
-                for (int w = 0; w < num_walls; w++) {
-                    BalltoWallCollision(balls[i], walls[w]);
-                }
-            }
-
-            for (int i = 0; i < num_balls; i++) {
-                for (int p = 0; p < num_pockets; p++) {
-                    bool is_cue_ball = (i == 0);
-                    BalltoPocketCollision(balls[i], pockets[p], cue_start_position, is_cue_ball);
-                }
-            }
-
+ 
             accumulator -= TIMESTEP;
         }
-
+        
         BeginDrawing();
-        ClearBackground(GREEN);
-
-        // walls
-        DrawRectangle(0, 0, WINDOW_WIDTH, BORDER_THICKNESS, RED);
-        DrawRectangle(0, WINDOW_HEIGHT - BORDER_THICKNESS, WINDOW_WIDTH, BORDER_THICKNESS, RED);
-        DrawRectangle(0, 0, BORDER_THICKNESS, WINDOW_HEIGHT, RED);
-        DrawRectangle(WINDOW_WIDTH - BORDER_THICKNESS, 0, BORDER_THICKNESS, WINDOW_HEIGHT, RED);
-
-        // pockets
-        DrawCircleV({ POCKET_INSET, POCKET_INSET }, POCKET_RADIUS, BLACK);
-        DrawCircleV({ WINDOW_WIDTH - POCKET_INSET, POCKET_INSET }, POCKET_RADIUS, BLACK);
-        DrawCircleV({ POCKET_INSET, WINDOW_HEIGHT - POCKET_INSET }, POCKET_RADIUS, BLACK);
-        DrawCircleV({ WINDOW_WIDTH - POCKET_INSET, WINDOW_HEIGHT - POCKET_INSET }, POCKET_RADIUS, BLACK);
-
-        for (int i = 0; i < num_balls; i++) {
-            if (balls[i].active) {
-                DrawCircleV(balls[i].position, balls[i].radius, balls[i].color);
+        ClearBackground(WHITE);
+        for (particle* p : particles) {
+            DrawCircleV(p->position, p->radius, p->color);
+        }
+ 
+        // grid visualization with the number of particles in each cell
+        for (int x = 0; x < GRID_WIDTH; x++) {
+            for (int y = 0; y < GRID_HEIGHT; y++) {
+                DrawRectangleLines(grid[x][y].position.x, grid[x][y].position.y, grid[x][y].size.x, grid[x][y].size.y, GRAY);
+ 
+                int count = (int)grid[x][y].particles.size();
+                if (count > 0) {
+                    DrawText(TextFormat("%d", count), (int)grid[x][y].position.x + 3, (int)grid[x][y].position.y + 3, 10, RED);
+                }
             }
         }
-
-        if (dragging) {
-            Vector2 current = GetMousePosition();
-            Vector2 drag_vector = Vector2Subtract(current, balls[0].position);
-            float drag_length = Vector2Length(drag_vector);
-
-            if (drag_length > MAX_DRAG_LENGTH) {
-                drag_vector = Vector2Scale(Vector2Normalize(drag_vector), MAX_DRAG_LENGTH);
-            }
-
-            Vector2 line_end = Vector2Add(balls[0].position, drag_vector);
-            DrawLineEx(balls[0].position, line_end, 4.0f, YELLOW);
-        }
-
-        if (GameWon(balls, num_balls)) {
-            const char* win = "YOU WIN";
-            int fontSize = 60;
-            int textWidth = MeasureText(win, fontSize);
-
-            DrawText(win, (WINDOW_WIDTH - textWidth) / 2, WINDOW_HEIGHT / 2 - 30, fontSize, BLACK);
-
-            const char* subtext = "Press R to play again";
-            int subFontSize = 24;
-            int subTextWidth = MeasureText(subtext, subFontSize);
-
-            DrawText(subtext, (WINDOW_WIDTH - subTextWidth) / 2, WINDOW_HEIGHT / 2 + 40, subFontSize, BLACK);
-        }
-
+ 
+        DrawText("Press SPACE to spawn particles", 10, 10, 20, BLACK);
+        DrawText(TextFormat("Particles: %d  FPS: %d", (int)particles.size(), GetFPS()), 10, 35, 20, BLACK);
         EndDrawing();
     }
+
+    for (particle* p : particles) {
+        delete p;
+    }
+
     CloseWindow();
     return 0;
 }
