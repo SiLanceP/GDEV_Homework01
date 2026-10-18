@@ -6,11 +6,9 @@ const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
 const float TIMESTEP = 1 / FPS; // Sets the timestep to 1 / FPS. But timestep can be any very small value.
-const int CELL_SIZE = 80;
-const int GRID_WIDTH = WINDOW_WIDTH / CELL_SIZE;
-const int GRID_HEIGHT = WINDOW_HEIGHT / CELL_SIZE;
 const float elasticity = 1.0f;
 const int SPAWNS_BEFORE_BIG = 10;
+const int MAX_DEPTH = 5;
 
 //g++ Main.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 
@@ -24,17 +22,26 @@ struct particle {
     float mass;
     float inverse_mass; // A variable for 1 / mass. Used in the calculation for acceleration = sum of forces / mass
 
-    int min_x;
-    int min_y;
-    int max_x;
-    int max_y;
+    float min_x;
+    float min_y;
+    float max_x;
+    float max_y;
 };
 
-struct GridCell {
+struct QuadTreeNode {
+    Vector2 center;
+    float half_width;
+    int depth;
+    QuadTreeNode* parent = nullptr;
+    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
     std::vector<particle*> particles;
-    Vector2 position;
-    Vector2 size;
+
+    bool IsLeaf() const {
+        return children[0] == nullptr;
+    }
 };
+
+
 
 //helper code for the collision equation (ball-ball collision)
 void BalltoBallCollision(particle& a, particle& b) {
@@ -75,6 +82,31 @@ void BalltoWallCollision(particle& ball) {
     // clamp to keep ball inside the screen
     ball.position.x = Clamp(ball.position.x, ball.radius, WINDOW_WIDTH - ball.radius);
     ball.position.y = Clamp(ball.position.y, ball.radius, WINDOW_HEIGHT - ball.radius);
+}
+
+//helper to check if the particle is inside a node
+bool IsInsideNode(const particle* p, const QuadTreeNode* node) {
+    float nodeMinX = node->center.x - node->half_width;
+    float nodeMaxX = node->center.x + node->half_width;
+    float nodeMinY = node->center.y - node->half_width;
+    float nodeMaxY = node->center.y + node->half_width;
+
+    return !(p->min_x >= nodeMinX && p->max_x <= nodeMaxX && p->min_y >= nodeMinY && p->max_y <= nodeMaxY);
+}
+
+//check if particle AABB intersects with node AABB
+bool AABBIntersectNode(const particle* p, const QuadTreeNode* node) {
+    float nodeMinX = node->center.x - node->half_width;
+    float nodeMaxX = node->center.x + node->half_width;
+    float nodeMinY = node->center.y - node->half_width;
+    float nodeMaxY = node->center.y + node->half_width;
+
+    return !(p->max_x < nodeMinX || p->min_x > nodeMaxX || p->max_y < nodeMinY || p->min_y > nodeMaxY);
+}
+
+//check particle AABB intersects with another particle AABB
+bool IntersectParticleAABB(const particle* a, const particle* b) {
+    return !(a->max_x < b->min_x || a->min_x > b->max_x || a->max_y < b->min_y || a->min_y > b->max_y);
 }
 
 //helper to get the cell index of a coordinate
