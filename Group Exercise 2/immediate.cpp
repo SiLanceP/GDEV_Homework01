@@ -7,8 +7,6 @@
 #include <string>
 #include <vector>
 
-
-// g++ immediate.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 // Struct to encapsulate our UI library
 struct UiLibrary
 {
@@ -72,6 +70,10 @@ struct UiLibrary
             hot = -1;
         }
 
+        if (id == active) {
+            buttonColor = GREEN;
+        }
+
         // Draw our button regardless of what happens
         DrawRectangleRec(bounds, buttonColor);
         DrawText(text.c_str(), bounds.x, bounds.y, 14, BLACK);
@@ -81,25 +83,31 @@ struct UiLibrary
 };
 
 struct checkbox {
-    bool button(int id, const Rectangle& bounds, bool checked) {
-        bool result = false;
-
-        if (CheckCollisionPointRec(GetMousePosition(), bounds)) {
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+    bool button(int id, const Rectangle& bounds, bool& checked) {
+        if(CheckCollisionPointRec(GetMousePosition(), bounds)) {
+            if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 checked = !checked;
-                result = true;
             }
         }
 
         DrawRectangleRec(bounds, checked ? RED : GREEN);
-        return result;
+        return checked;
     }
 };
 
+bool isDisabled = false;
 
 void ChangeResolution(int width, int height) {
-    SetWindowSize(width, height);
+    if (!isDisabled) {
+        SetWindowSize(width, height);
+    }
 }
+
+void DisableButton() {
+    isDisabled = true;
+}
+
+
 
 int main()
 {
@@ -108,6 +116,8 @@ int main()
     SetTargetFPS(60);
     checkbox cb;
     UiLibrary uiLibrary;
+    bool checked = false;
+    
     while (!WindowShouldClose())
     {
         ClearBackground(WHITE);
@@ -127,9 +137,12 @@ int main()
             ChangeResolution(1366, 768);
         }
 
-        if(cb.button(1, {10, 60, 20, 20}, true)) {
-            std::cout << "Checkbox clicked!" << std::endl;
+        if(cb.button(1, {10, 60, 20, 20}, checked)) {
+            DisableButton();
+        } else {
+            isDisabled = false;
         }
+        DrawText("Lock Screen Size", 40, 60, 20, BLACK);
 
         EndDrawing();
     }
