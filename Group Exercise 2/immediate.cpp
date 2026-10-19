@@ -22,6 +22,7 @@ struct UiLibrary
     {
         bool result = false;
         Color buttonColor = color;
+        Color textColor = BLACK;
 
         // If this button is the currently active widget, that means
         // the user is currently interacting with this widget
@@ -72,11 +73,12 @@ struct UiLibrary
 
         if (id == active) {
             buttonColor = GREEN;
+            textColor = WHITE;
         }
 
         // Draw our button regardless of what happens
         DrawRectangleRec(bounds, buttonColor);
-        DrawText(text.c_str(), bounds.x, bounds.y, 14, BLACK);
+        DrawText(text.c_str(), bounds.x, bounds.y, 14, textColor);
 
         return result;
     }
