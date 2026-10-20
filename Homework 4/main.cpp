@@ -84,16 +84,6 @@ void BalltoWallCollision(particle& ball) {
     ball.position.y = Clamp(ball.position.y, ball.radius, WINDOW_HEIGHT - ball.radius);
 }
 
-//helper to check if the particle is inside a node
-bool IsInsideNode(const particle* p, const QuadTreeNode* node) {
-    float nodeMinX = node->center.x - node->half_width;
-    float nodeMaxX = node->center.x + node->half_width;
-    float nodeMinY = node->center.y - node->half_width;
-    float nodeMaxY = node->center.y + node->half_width;
-
-    return !(p->min_x >= nodeMinX && p->max_x <= nodeMaxX && p->min_y >= nodeMinY && p->max_y <= nodeMaxY);
-}
-
 //check if particle AABB intersects with node AABB
 bool AABBIntersectNode(const particle* p, const QuadTreeNode* node) {
     float nodeMinX = node->center.x - node->half_width;
@@ -109,58 +99,97 @@ bool IntersectParticleAABB(const particle* a, const particle* b) {
     return !(a->max_x < b->min_x || a->min_x > b->max_x || a->max_y < b->min_y || a->min_y > b->max_y);
 }
 
-//helper to get the cell index of a coordinate
-int GetCellIndex(float value, int count) {
-    int index = (int)(value / CELL_SIZE);
-    if (index < 0) index = 0;
-    if (index > count - 1) index = count - 1;
-    return index;
+
+//helper to refresh a particles AABB from its position and radius
+void UpdateAABB(particle* p) {
+    p->min_x = p->position.x - p->radius;
+    p->max_x = p->position.x + p->radius;
+    p->min_y = p->position.y - p->radius;
+    p->max_y = p->position.y + p->radius;
 }
 
-//helper to rebuild the particle list of every cell using each particle's AABB
-void UpdateGrid(GridCell grid[GRID_WIDTH][GRID_HEIGHT], std::vector<particle*>& particles) {
-    for (int x = 0; x < GRID_WIDTH; x++) {
-        for (int y = 0; y < GRID_HEIGHT; y++) {
-            grid[x][y].particles.clear();
+//helper to allocate one node
+QuadTreeNode* CreateNode(Vector2 center, float half_width, int depth, QuadTreeNode* parent) {
+    QuadTreeNode* node = new QuadTreeNode();
+    node->center = center;
+    node->half_width = half_width;
+    node->depth = depth;
+    node->parent = parent;
+    return node;
+}
+
+QuadTreeNode* BuildStaticTree(Vector2 center, float half_width, int depth, QuadTreeNode* parent) {
+    QuadTreeNode* node = CreateNode(center, half_width, depth, parent);
+
+    if (depth < MAX_DEPTH) {
+        float quarter = half_width / 2.0f;
+        for (int i = 0; i < 4; i++) {
+            float dx = (i % 2 == 0) ? -quarter : quarter;
+            float dy = (i < 2) ? -quarter : quarter;
+            Vector2 child_center = { center.x + dx, center.y + dy };
+            node->children[i] = BuildStaticTree(child_center, quarter, depth + 1, node);
         }
     }
- 
+    return node;
+}
+
+int GetChildIndex(const QuadTreeNode* node, const particle* p) {
+    bool left   = p->max_x <= node->center.x;
+    bool right  = p->min_x >= node->center.x;
+    bool top    = p->max_y <= node->center.y;
+    bool bottom = p->min_y >= node->center.y;
+
+    if (!(left || right) || !(top || bottom)) return -1;
+    return (right ? 1 : 0) + (bottom ? 2 : 0);
+}
+
+//insert a particle into the deepest node that completely contains it
+void InsertParticle(QuadTreeNode* node, particle* p) {
+    if (node->IsLeaf()) {
+        node->particles.push_back(p);
+        return;
+    }
+
+    int index = GetChildIndex(node, p);
+    if (index != -1) {
+        InsertParticle(node->children[index], p);
+    } else {
+        node->particles.push_back(p);
+    }
+}
+
+// free the whole tree
+void DestroyTree(QuadTreeNode* node) {
+    if (node == nullptr) return;
+    for (int i = 0; i < 4; i++) {
+        DestroyTree(node->children[i]);
+    }
+    delete node;
+}
+
+QuadTreeNode* CreateTree() {
+    float half = (WINDOW_WIDTH > WINDOW_HEIGHT ? WINDOW_WIDTH : WINDOW_HEIGHT) / 2.0f;
+    Vector2 center = { WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f };
+    return BuildStaticTree(center, half, 0, nullptr);
+}
+
+void ClearTree(QuadTreeNode* node) {
+    node->particles.clear();
+    if (!node->IsLeaf()) {
+        for (int i = 0; i < 4; i++) ClearTree(node->children[i]);
+    }
+}
+
+void ReinsertParticles(QuadTreeNode* root, std::vector<particle*>& particles) {
+    ClearTree(root);
     for (particle* p : particles) {
-        p->min_x = GetCellIndex(p->position.x - p->radius, GRID_WIDTH);
-        p->max_x = GetCellIndex(p->position.x + p->radius, GRID_WIDTH);
-        p->min_y = GetCellIndex(p->position.y - p->radius, GRID_HEIGHT);
-        p->max_y = GetCellIndex(p->position.y + p->radius, GRID_HEIGHT);
- 
-        for (int x = p->min_x; x <= p->max_x; x++) {
-            for (int y = p->min_y; y <= p->max_y; y++) {
-                grid[x][y].particles.push_back(p);
-            }
-        }
-    }
-}
- 
-//helper to check collisions only between particles that share a cell
-void GridCollisions(GridCell grid[GRID_WIDTH][GRID_HEIGHT]) {
-    for (int x = 0; x < GRID_WIDTH; x++) {
-        for (int y = 0; y < GRID_HEIGHT; y++) {
-            std::vector<particle*>& cell = grid[x][y].particles;
- 
-            for (size_t i = 0; i < cell.size(); i++) {
-                for (size_t j = i + 1; j < cell.size(); j++) {
-                    particle* a = cell[i];
-                    particle* b = cell[j];
- 
-                    int shared_x = (a->min_x > b->min_x) ? a->min_x : b->min_x;
-                    int shared_y = (a->min_y > b->min_y) ? a->min_y : b->min_y;
-                    if (shared_x != x || shared_y != y) continue;
- 
-                    BalltoBallCollision(*a, *b);
-                }
-            }
-        }
+        UpdateAABB(p);
+        InsertParticle(root, p);
     }
 }
 
+
+// UNCHANGED
 void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nextId) {
     // Function to spawn particles
     if (spawnCount == SPAWNS_BEFORE_BIG) {
@@ -188,24 +217,18 @@ void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nex
             particles.push_back(a);
         }
     }
- 
+
 }
 
 int main() {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Grid");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Quad Tree");
     SetTargetFPS(FPS);
     float accumulator = 0.0f;
     std::vector<particle*> particles;
     int spawnCount = 0;
     int nextId = 0;
 
-    GridCell grid[GRID_WIDTH][GRID_HEIGHT];
-    for (int x = 0; x < GRID_WIDTH; x++) {
-        for (int y = 0; y < GRID_HEIGHT; y++) {
-            grid[x][y].position = { (float)(x * CELL_SIZE), (float)(y * CELL_SIZE) };
-            grid[x][y].size = { (float)CELL_SIZE, (float)CELL_SIZE };
-        }
-    }
+    QuadTreeNode* root = CreateTree();
 
     while (!WindowShouldClose()) {
         float delta_time = GetFrameTime();
@@ -214,46 +237,33 @@ int main() {
         if (IsKeyPressed(KEY_SPACE)) {
             Spawnparticles(particles, spawnCount, nextId);
         }
-        
+
         while (accumulator >= TIMESTEP) {
             // update particle position based on velocity
             for (particle* p : particles) {
                 p->position = Vector2Add(p->position, Vector2Scale(p->velocity, TIMESTEP));
             }
- 
-            UpdateGrid(grid, particles);
-            GridCollisions(grid);
- 
+
+            ReinsertParticles(root, particles);
+
             // check for wall collisions
             for (particle* p : particles) {
                 BalltoWallCollision(*p);
             }
- 
+
             accumulator -= TIMESTEP;
         }
-        
+
         BeginDrawing();
         ClearBackground(WHITE);
         for (particle* p : particles) {
             DrawCircleV(p->position, p->radius, p->color);
         }
- 
-        // grid visualization with the number of particles in each cell
-        for (int x = 0; x < GRID_WIDTH; x++) {
-            for (int y = 0; y < GRID_HEIGHT; y++) {
-                DrawRectangleLines(grid[x][y].position.x, grid[x][y].position.y, grid[x][y].size.x, grid[x][y].size.y, GRAY);
- 
-                int count = (int)grid[x][y].particles.size();
-                if (count > 0) {
-                    DrawText(TextFormat("%d", count), (int)grid[x][y].position.x + 3, (int)grid[x][y].position.y + 3, 10, RED);
-                }
-            }
-        }
- 
-        DrawText("Press SPACE to spawn particles", 10, 10, 20, BLACK);
-        DrawText(TextFormat("Particles: %d  FPS: %d", (int)particles.size(), GetFPS()), 10, 35, 20, BLACK);
+
         EndDrawing();
     }
+
+    DestroyTree(root);
 
     for (particle* p : particles) {
         delete p;
