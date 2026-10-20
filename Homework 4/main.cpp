@@ -188,6 +188,51 @@ void ReinsertParticles(QuadTreeNode* root, std::vector<particle*>& particles) {
     }
 }
 
+void CheckNodeCollisions(QuadTreeNode* node, particle* p) {
+    if (!AABBIntersectNode(p, node)) {
+        return;
+    }
+
+    for (particle* other : node->particles) {
+        if (p != other) {
+            if (IntersectParticleAABB(p, other)) {
+                BalltoBallCollision(*p, *other);
+                UpdateAABB(p);
+                UpdateAABB(other);
+            }
+        }
+    }
+
+    if(!node->IsLeaf()) {
+        for (int i = 0; i < 4; i++) {
+            CheckNodeCollisions(node->children[i], p);
+        }
+    }
+}
+
+void QuadTreeCollisions(QuadTreeNode* node, std::vector<particle*>& particles) {
+    for (particle* p : particles) {
+        CheckNodeCollisions(node, p);
+    }
+}
+
+void DrawTree(const QuadTreeNode* node) {
+    if (node == nullptr) return;
+    if (!node->particles.empty()) {
+        float x = node->center.x - node->half_width;
+        float y = node->center.y - node->half_width;
+        float size = node->half_width * 2.0f;
+
+        DrawRectangleLines(int(x), int(y), int(size), int(size), RED);
+        DrawText(TextFormat("%d", (int)node->particles.size()), int(x+3), int(y+3), 10, RED);
+    }
+
+    if(!node->IsLeaf()) {
+        for (int i = 0; i < 4; i++) {
+            DrawTree(node->children[i]);
+        }
+    }
+}
 
 // UNCHANGED
 void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nextId) {
@@ -227,6 +272,7 @@ int main() {
     std::vector<particle*> particles;
     int spawnCount = 0;
     int nextId = 0;
+    bool showTree = true;
 
     QuadTreeNode* root = CreateTree();
 
@@ -238,6 +284,10 @@ int main() {
             Spawnparticles(particles, spawnCount, nextId);
         }
 
+        if (IsKeyPressed(KEY_T)) {
+            showTree = !showTree;
+        }
+
         while (accumulator >= TIMESTEP) {
             // update particle position based on velocity
             for (particle* p : particles) {
@@ -245,6 +295,8 @@ int main() {
             }
 
             ReinsertParticles(root, particles);
+
+            QuadTreeCollisions(root, particles);
 
             // check for wall collisions
             for (particle* p : particles) {
@@ -259,6 +311,12 @@ int main() {
         for (particle* p : particles) {
             DrawCircleV(p->position, p->radius, p->color);
         }
+
+        if (showTree) {
+            DrawTree(root);
+        }
+
+        DrawText(TextFormat("Particles: %d  FPS: %d", (int)particles.size(), GetFPS()), 10, 35, 20, BLACK);
 
         EndDrawing();
     }
