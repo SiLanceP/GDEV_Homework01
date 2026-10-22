@@ -234,7 +234,6 @@ void DrawTree(const QuadTreeNode* node) {
     }
 }
 
-// UNCHANGED
 void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nextId) {
     // Function to spawn particles
     if (spawnCount == SPAWNS_BEFORE_BIG) {
@@ -317,6 +316,7 @@ int main() {
         }
 
         DrawText(TextFormat("Particles: %d  FPS: %d", (int)particles.size(), GetFPS()), 10, 35, 20, BLACK);
+        DrawText("PRESS [T] TO TOGGLE QUAD TREE", 10, 60, 12, RED);
 
         EndDrawing();
     }
