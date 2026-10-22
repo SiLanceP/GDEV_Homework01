@@ -94,7 +94,7 @@ bool AABBIntersectNode(const particle* p, const QuadTreeNode* node) {
     return !(p->max_x < nodeMinX || p->min_x > nodeMaxX || p->max_y < nodeMinY || p->min_y > nodeMaxY);
 }
 
-//check particle AABB intersects with another particle AABB
+//check particle AABB intersect with another particle AABB
 bool IntersectParticleAABB(const particle* a, const particle* b) {
     return !(a->max_x < b->min_x || a->min_x > b->max_x || a->max_y < b->min_y || a->min_y > b->max_y);
 }
