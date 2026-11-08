@@ -13,7 +13,7 @@ const int MAX_DEPTH = 5;
 //g++ Main.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 
 
-struct particle {
+struct asteroids {
     int id;
     Vector2 position;
     Vector2 velocity;
@@ -28,18 +28,6 @@ struct particle {
     float max_y;
 };
 
-struct QuadTreeNode {
-    Vector2 center;
-    float half_width;
-    int depth;
-    QuadTreeNode* parent = nullptr;
-    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
-    std::vector<particle*> particles;
-
-    bool IsLeaf() const {
-        return children[0] == nullptr;
-    }
-};
 
 
 
@@ -234,33 +222,21 @@ void DrawTree(const QuadTreeNode* node) {
     }
 }
 
-void Spawnparticles(std::vector<particle*>& particles, int& spawnCount, int& nextId) {
+void Spawnasteroids(std::vector<asteroids*>& asteroids, int& spawnCount, int& nextId) {
     // Function to spawn particles
-    if (spawnCount == SPAWNS_BEFORE_BIG) {
+    if (color == BLUE) {
         spawnCount = 0;
-        particle* p = new particle();
-        p->id = nextId++;
-        p->radius = 25.0f;
-        p->mass = 10.0f;
-        p->inverse_mass = 1.0f / p->mass;
-        p->position = { (float)GetRandomValue(30, WINDOW_WIDTH - 30), (float)GetRandomValue(30, WINDOW_HEIGHT  - 30) };
-        p->velocity = { (float)GetRandomValue(-200, 200), (float)GetRandomValue(-200, 200) };
-        p->color = { (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), 255 };
-        particles.push_back(p);
+        asteroids* a = new asteroids();
+        a->id = nextId++;
+        a->radius = 25.0f;
+        a->mass = 10.0f;
+        a->inverse_mass = 1.0f / a->mass;
+        a->position = { (float)GetRandomValue(30, WINDOW_WIDTH - 30), (float)GetRandomValue(30, WINDOW_HEIGHT  - 30) };
+        a->velocity = { (float)GetRandomValue(-200, 200), (float)GetRandomValue(-200, 200) };
+        a->color = { (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), 255 };
+        asteroids.push_back(a);
     } else {
         spawnCount++;
-        for (int i = 0; i < 25; i++) {
-            particle* a = new particle();
-            a->id = nextId++;
-            a->radius = (float)GetRandomValue(5, 10);
-            a->mass = 1.0f;
-            a->inverse_mass = 1.0f / a->mass;
-            a->color = { (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), (unsigned char)GetRandomValue(0, 255), 255 };
-            a->position = {WINDOW_WIDTH / 2.0f, WINDOW_HEIGHT / 2.0f};
-            a->velocity = { (float)GetRandomValue(-200, 200), (float)GetRandomValue(-200, 200) };
-            particles.push_back(a);
-        }
-    }
 
 }
 
@@ -280,7 +256,7 @@ int main() {
         accumulator += delta_time;
 
         if (IsKeyPressed(KEY_SPACE)) {
-            Spawnparticles(particles, spawnCount, nextId);
+            Spawnasteroids(asteroids, spawnCount, nextId);
         }
 
         if (IsKeyPressed(KEY_T)) {
