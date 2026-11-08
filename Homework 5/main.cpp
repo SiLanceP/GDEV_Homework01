@@ -1,6 +1,7 @@
 #include <raylib.h>
 #include <raymath.h>
 #include <vector>
+#include "entt.hpp"
 
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
@@ -13,7 +14,7 @@ const int MAX_DEPTH = 5;
 //g++ Main.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
 
 
-struct particle {
+struct Asteroid {
     int id;
     Vector2 position;
     Vector2 velocity;
@@ -27,20 +28,6 @@ struct particle {
     float max_x;
     float max_y;
 };
-
-struct QuadTreeNode {
-    Vector2 center;
-    float half_width;
-    int depth;
-    QuadTreeNode* parent = nullptr;
-    QuadTreeNode* children[4] = { nullptr, nullptr, nullptr, nullptr };
-    std::vector<particle*> particles;
-
-    bool IsLeaf() const {
-        return children[0] == nullptr;
-    }
-};
-
 
 
 //helper code for the collision equation (ball-ball collision)

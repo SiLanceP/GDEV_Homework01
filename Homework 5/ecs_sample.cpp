@@ -3,6 +3,8 @@
 
 #include "entt.hpp"
 
+//g++ ecs_sample.cpp -o out -I raylib/ -L raylib/ -lraylib -lopengl32 -lgdi32 -lwinmm
+
 struct PositionComponent {
     Vector2 position;
 };
