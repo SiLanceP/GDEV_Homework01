@@ -6,8 +6,8 @@
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
-const float TIMESTEP = 1 / FPS; // Sets the timestep to 1 / FPS. But timestep can be any very small value.
-const float spawn_interval = 0.5f;
+const float TIMESTEP = 1 / FPS;
+const float spawn_interval = 1.67f;
 const float spawn_region_half = 100.0f;
 const float mouse_force = 300.0f;
 const float max_speed = 400.0f;
@@ -16,7 +16,7 @@ const float max_speed = 400.0f;
 
 struct TransformComponent {
     Vector2 position;
-}
+};
 
 struct VelocityComponent {
     Vector2 velocity;
@@ -45,6 +45,10 @@ struct SelfDestructComponent {
 struct SplitOnDestroyComponent {
     int count;
 };
+
+struct DestroyComponent {};
+
+void RandomCircleProperties(entt::registry& registry, entt::entity e, ColorComponent& color);
 
 //RandomFloat helper
 float RandomFloat(float min, float max) {
@@ -137,70 +141,122 @@ void RandomCircleProperties(entt::registry& registry, entt::entity e, ColorCompo
     }
 }
 
+void Spawn(entt::registry& registry, float delta_time, float& spawn_timer) {
+    spawn_timer += delta_time;
+    while (spawn_timer >= spawn_interval) {
+        SpawnAsteroid(registry, RandomCenterPosition());
+        spawn_timer -= spawn_interval;
+    }
+}
+ 
+void MouseAttract(entt::registry& registry, float delta_time) {
+    Vector2 mouse = GetMousePosition();
+    auto view = registry.view<TransformComponent, VelocityComponent, MouseAttractorComponent>();
+    for (auto e : view) {
+        TransformComponent& t = registry.get<TransformComponent>(e);
+        VelocityComponent& v = registry.get<VelocityComponent>(e);
+        MouseAttractorComponent& a = registry.get<MouseAttractorComponent>(e);
+ 
+        Vector2 to_mouse = Vector2Subtract(mouse, t.position);
+        if (Vector2Length(to_mouse) < 1.0f) continue;
+ 
+        v.velocity = Vector2Add(v.velocity, Vector2Scale(Vector2Normalize(to_mouse), a.force * delta_time));
+ 
+        if (Vector2Length(v.velocity) > max_speed) {
+            v.velocity = Vector2Scale(Vector2Normalize(v.velocity), max_speed);
+        }
+    }
+}
+
+void MouseRepel(entt::registry& registry, float delta_time) {
+    Vector2 mouse = GetMousePosition();
+    auto view = registry.view<TransformComponent, VelocityComponent, MouseRepelComponent>();
+    for (auto e : view) {
+        TransformComponent& t = registry.get<TransformComponent>(e);
+        VelocityComponent& v = registry.get<VelocityComponent>(e);
+        MouseRepelComponent& r = registry.get<MouseRepelComponent>(e);
+ 
+        Vector2 away = Vector2Subtract(t.position, mouse);
+        if (Vector2Length(away) < 1.0f) continue;
+ 
+        v.velocity = Vector2Add(v.velocity, Vector2Scale(Vector2Normalize(away), r.force * delta_time));
+ 
+        if (Vector2Length(v.velocity) > max_speed) {
+            v.velocity = Vector2Scale(Vector2Normalize(v.velocity), max_speed);
+        }
+    }
+}
+
+void ClickDestroy(entt::registry& registry) {
+    if (!IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
+ 
+    Vector2 mouse = GetMousePosition();
+    auto view = registry.view<TransformComponent, CircleComponent>();
+    for (auto e : view) {
+        TransformComponent& t = registry.get<TransformComponent>(e);
+        CircleComponent& c = registry.get<CircleComponent>(e);
+        if (CheckCollisionPointCircle(mouse, t.position, c.radius)) {
+            registry.emplace_or_replace<DestroyComponent>(e);
+            break;
+        }
+    }
+}
+ 
+void Destroy(entt::registry& registry) {
+    std::vector<entt::entity> to_destroy;
+    auto view = registry.view<DestroyComponent>();
+    for (auto e : view) {
+        to_destroy.push_back(e);
+    }
+ 
+    for (entt::entity e : to_destroy) {
+        if (registry.all_of<SplitOnDestroyComponent, TransformComponent>(e)) {
+            int count = registry.get<SplitOnDestroyComponent>(e).count;
+            Vector2 pos = registry.get<TransformComponent>(e).position;
+            for (int i = 0; i < count; i++) {
+                SpawnAsteroid(registry, pos);
+            }
+        }
+        registry.destroy(e);
+    }
+}
+
+void SelfDestruct(entt::registry& registry, float delta_time) {
+    auto view = registry.view<SelfDestructComponent>();
+    for (auto e : view) {
+        SelfDestructComponent& sd = registry.get<SelfDestructComponent>(e);
+        sd.time_left -= delta_time;
+        if (sd.time_left <= 0.0f) {
+            registry.emplace_or_replace<DestroyComponent>(e);
+        }
+    }
+}
 
 int main() {
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Quad Tree");
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Asteroids ECS");
     SetTargetFPS(FPS);
-    float accumulator = 0.0f;
-    std::vector<particle*> particles;
-    int spawnCount = 0;
-    int nextId = 0;
-    bool showTree = true;
-
-    QuadTreeNode* root = CreateTree();
-
+ 
+    entt::registry registry;
+    float spawn_timer = 0.0f;
+ 
     while (!WindowShouldClose()) {
         float delta_time = GetFrameTime();
-        accumulator += delta_time;
-
-        if (IsKeyPressed(KEY_SPACE)) {
-            Spawnparticles(particles, spawnCount, nextId);
-        }
-
-        if (IsKeyPressed(KEY_T)) {
-            showTree = !showTree;
-        }
-
-        while (accumulator >= TIMESTEP) {
-            // update particle position based on velocity
-            for (particle* p : particles) {
-                p->position = Vector2Add(p->position, Vector2Scale(p->velocity, TIMESTEP));
-            }
-
-            ReinsertParticles(root, particles);
-
-            QuadTreeCollisions(root, particles);
-
-            // check for wall collisions
-            for (particle* p : particles) {
-                BalltoWallCollision(*p);
-            }
-
-            accumulator -= TIMESTEP;
-        }
-
+ 
+        Spawn(registry, delta_time, spawn_timer);
+        MouseAttract(registry, delta_time);
+        MouseRepel(registry, delta_time);
+        CircleMovement(registry, delta_time);
+        Bounce(registry);
+        SelfDestruct(registry, delta_time);
+        ClickDestroy(registry);
+        Destroy(registry);
+ 
         BeginDrawing();
         ClearBackground(WHITE);
-        for (particle* p : particles) {
-            DrawCircleV(p->position, p->radius, p->color);
-        }
-
-        if (showTree) {
-            DrawTree(root);
-        }
-
-        DrawText(TextFormat("Particles: %d  FPS: %d", (int)particles.size(), GetFPS()), 10, 35, 20, BLACK);
-        DrawText("PRESS [T] TO TOGGLE QUAD TREE", 10, 60, 12, RED);
-
+        DrawCircles(registry);
         EndDrawing();
     }
-
-    DestroyTree(root);
-
-    for (particle* p : particles) {
-        delete p;
-    }
-
+ 
     CloseWindow();
     return 0;
 }
