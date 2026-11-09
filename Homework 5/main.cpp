@@ -6,7 +6,6 @@
 const int WINDOW_WIDTH = 1280;
 const int WINDOW_HEIGHT = 720;
 const float FPS = 60;
-const float TIMESTEP = 1 / FPS;
 const float spawn_interval = 1.67f;
 const float spawn_region_half = 100.0f;
 const float mouse_force = 300.0f;
